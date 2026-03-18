@@ -12,13 +12,14 @@ function SuccessContent() {
 
   useEffect(() => {
     const t = setInterval(() => {
-      setCount((c) => {
-        if (c <= 1) { clearInterval(t); router.push("/"); }
-        return c - 1;
-      });
+      setCount((c) => c - 1);
     }, 1000);
     return () => clearInterval(t);
-  }, [router]);
+  }, []);
+
+  useEffect(() => {
+    if (count <= 0) router.push("/");
+  }, [count, router]);
 
   return (
     <>
