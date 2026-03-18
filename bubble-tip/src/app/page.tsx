@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import mqtt from "mqtt";
 
-const BROKER_URL = "wss://broker.hivemq.com:8884/mqtt"; // WebSocket TLS
+const BROKER_URL = "wss://broker.hivemq.com:8884/mqtt";
 const TOPIC      = "bubble/tip";
 
 const TIPS = [
@@ -13,10 +13,10 @@ const TIPS = [
 ];
 
 export default function TipPage() {
-  const clientRef               = useRef<mqtt.MqttClient | null>(null);
+  const clientRef                 = useRef<mqtt.MqttClient | null>(null);
   const [connected, setConnected] = useState(false);
-  const [sending, setSending]     = useState(false);
-  const [success, setSuccess]     = useState<number | null>(null);
+  const [loading, setLoading]     = useState<number | null>(null);
+  const [error, setError]         = useState<string | null>(null);
   const [tipCount, setTipCount]   = useState(0);
 
   useEffect(() => {
@@ -28,21 +28,28 @@ export default function TipPage() {
   }, []);
 
   async function sendTip(amount: number) {
-    if (!clientRef.current || sending) return;
-    setSending(true);
-    clientRef.current.publish(
-      TOPIC,
-      JSON.stringify({ amount }),
-      { qos: 1 },
-      (err) => {
-        setSending(false);
-        if (!err) {
-          setSuccess(amount);
-          setTipCount((c) => c + 1);
-          setTimeout(() => setSuccess(null), 3500);
-        }
+    if (loading) return;
+    setError(null);
+    setLoading(amount);
+
+    try {
+      const res  = await fetch("/api/checkout", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ amount }),
+      });
+      const data = await res.json();
+
+      if (data.checkout_url) {
+        setTipCount((c) => c + 1);
+        window.location.href = data.checkout_url; // → PayMongo GCash page
+      } else {
+        throw new Error(data.error || "Failed to create checkout");
       }
-    );
+    } catch (err: any) {
+      setError(err.message);
+      setLoading(null);
+    }
   }
 
   return (
@@ -68,13 +75,11 @@ export default function TipPage() {
           overflow-x: hidden;
         }
 
-        /* ── floating petals bg ── */
         .petals {
           position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden;
         }
         .petal {
           position: absolute;
-          width: 12px; height: 12px;
           border-radius: 50% 0 50% 0;
           opacity: 0.18;
           animation: fall linear infinite;
@@ -86,7 +91,6 @@ export default function TipPage() {
           100% { transform: translateY(110vh) rotate(360deg); opacity: 0; }
         }
 
-        /* ── layout ── */
         .page {
           position: relative; z-index: 1;
           min-height: 100dvh;
@@ -96,7 +100,6 @@ export default function TipPage() {
           gap: 32px;
         }
 
-        /* ── header ── */
         .header { text-align: center; }
         .avatar {
           width: 84px; height: 84px; border-radius: 50%;
@@ -114,19 +117,14 @@ export default function TipPage() {
         .name {
           font-family: 'Playfair Display', serif;
           font-size: clamp(2rem, 8vw, 3rem);
-          font-weight: 900;
-          color: var(--ink);
-          letter-spacing: -1px;
-          line-height: 1;
+          font-weight: 900; color: var(--ink);
+          letter-spacing: -1px; line-height: 1;
         }
         .tagline {
-          margin-top: 6px;
-          font-size: 15px; font-weight: 300;
-          color: var(--rose);
-          letter-spacing: 0.5px;
+          margin-top: 6px; font-size: 15px; font-weight: 300;
+          color: var(--rose); letter-spacing: 0.5px;
         }
 
-        /* ── status dot ── */
         .status {
           display: flex; align-items: center; gap: 6px;
           font-size: 12px; color: #888; margin-top: 10px;
@@ -134,23 +132,18 @@ export default function TipPage() {
         }
         .dot {
           width: 7px; height: 7px; border-radius: 50%;
-          background: #ccc;
-          transition: background 0.4s;
+          background: #ccc; transition: background 0.4s;
         }
         .dot.on { background: #4ade80; box-shadow: 0 0 6px #4ade80; }
 
-        /* ── tip section ── */
         .tip-section { width: 100%; max-width: 360px; }
         .section-label {
           font-size: 11px; font-weight: 500; letter-spacing: 2px;
           text-transform: uppercase; color: #b0708a;
           margin-bottom: 14px; text-align: center;
         }
-        .tip-grid {
-          display: flex; flex-direction: column; gap: 12px;
-        }
+        .tip-grid { display: flex; flex-direction: column; gap: 12px; }
 
-        /* ── tip button ── */
         .tip-btn {
           width: 100%; border: none; cursor: pointer;
           border-radius: 18px; padding: 0;
@@ -173,8 +166,7 @@ export default function TipPage() {
         }
         .tip-emoji {
           font-size: 28px; flex-shrink: 0;
-          width: 48px; height: 48px;
-          border-radius: 14px;
+          width: 48px; height: 48px; border-radius: 14px;
           background: linear-gradient(135deg, #ffe0ed, #ffc8dc);
           display: grid; place-items: center;
         }
@@ -182,44 +174,39 @@ export default function TipPage() {
         .tip-amount {
           font-family: 'Playfair Display', serif;
           font-size: 22px; font-weight: 700;
-          color: var(--ink);
-          line-height: 1;
+          color: var(--ink); line-height: 1;
         }
         .tip-amount span { font-size: 14px; color: var(--rose); }
-        .tip-label { font-size: 12px; color: #b0708a; margin-top: 2px; }
+        .tip-sub { font-size: 12px; color: #b0708a; margin-top: 2px; }
         .tip-arrow { font-size: 18px; color: var(--rose-lt); }
 
-        /* ── success overlay ── */
-        .success-wrap {
-          position: fixed; inset: 0; z-index: 50;
-          display: grid; place-items: center;
-          background: rgba(255,245,248,0.88);
-          backdrop-filter: blur(8px);
-          animation: fadeIn 0.25s ease;
+        /* GCash badge */
+        .gcash-badge {
+          display: inline-flex; align-items: center; gap: 5px;
+          background: #0070ba; color: white;
+          font-size: 10px; font-weight: 600; letter-spacing: 0.5px;
+          padding: 3px 8px; border-radius: 20px; margin-top: 4px;
         }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        .success-card {
-          background: white;
-          border-radius: 28px;
-          padding: 40px 36px;
-          text-align: center;
-          box-shadow: 0 24px 64px rgba(255,77,141,0.2);
-          animation: popIn 0.3s cubic-bezier(0.34,1.56,0.64,1);
-          max-width: 300px;
-        }
-        @keyframes popIn {
-          from { transform: scale(0.8); opacity: 0; }
-          to   { transform: scale(1);   opacity: 1; }
-        }
-        .success-card .big { font-size: 56px; margin-bottom: 12px; }
-        .success-card h2 {
-          font-family: 'Playfair Display', serif;
-          font-size: 26px; color: var(--rose);
-          margin-bottom: 8px;
-        }
-        .success-card p { font-size: 14px; color: #888; line-height: 1.6; }
 
-        /* ── footer ── */
+        /* Loading spinner inside button */
+        .spinner {
+          width: 18px; height: 18px;
+          border: 2px solid rgba(255,77,141,0.2);
+          border-top-color: var(--rose);
+          border-radius: 50%;
+          animation: spin 0.65s linear infinite;
+          flex-shrink: 0;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Error message */
+        .error-box {
+          width: 100%; max-width: 360px;
+          background: #fff0f0; border: 1px solid #ffc0cb;
+          border-radius: 14px; padding: 12px 16px;
+          font-size: 13px; color: #c0392b; text-align: center;
+        }
+
         .footer {
           font-size: 11px; color: #c0a0b0;
           text-align: center; line-height: 1.8;
@@ -233,12 +220,12 @@ export default function TipPage() {
             key={i}
             className="petal"
             style={{
-              left: `${(i * 5.7) % 100}%`,
-              background: i % 2 === 0 ? "#ff4d8d" : "#f5c842",
+              left:              `${(i * 5.7) % 100}%`,
+              background:        i % 2 === 0 ? "#ff4d8d" : "#f5c842",
               animationDuration: `${6 + (i * 1.3) % 8}s`,
               animationDelay:    `${(i * 0.7) % 6}s`,
-              width:  `${8 + (i * 3) % 12}px`,
-              height: `${8 + (i * 3) % 12}px`,
+              width:             `${8 + (i * 3) % 12}px`,
+              height:            `${8 + (i * 3) % 12}px`,
             }}
           />
         ))}
@@ -249,7 +236,7 @@ export default function TipPage() {
         <div className="header">
           <div className="avatar">💖</div>
           <h1 className="name">Tip Us</h1>
-          <p className="tagline">Scan · Choose · Spread love 🌸</p>
+          <p className="tagline">Scan · Pay via GCash · Spread love 🌸</p>
           <div className="status">
             <div className={`dot ${connected ? "on" : ""}`} />
             <span>{connected ? "Ready to receive tips" : "Connecting…"}</span>
@@ -264,7 +251,7 @@ export default function TipPage() {
               <button
                 key={amount}
                 className="tip-btn"
-                disabled={!connected || sending}
+                disabled={!!loading}
                 onClick={() => sendTip(amount)}
               >
                 <div className="tip-btn-inner">
@@ -273,35 +260,30 @@ export default function TipPage() {
                     <div className="tip-amount">
                       <span>₱</span>{amount}
                     </div>
-                    <div className="tip-label">{label}</div>
+                    <div className="tip-sub">{label}</div>
+                    <div className="gcash-badge">💙 GCash</div>
                   </div>
-                  <div className="tip-arrow">→</div>
+                  {loading === amount
+                    ? <div className="spinner" />
+                    : <div className="tip-arrow">→</div>
+                  }
                 </div>
               </button>
             ))}
           </div>
         </div>
 
+        {/* error */}
+        {error && (
+          <div className="error-box">⚠️ {error}</div>
+        )}
+
         {/* footer */}
         <p className="footer">
-          Tips go straight to Our's LCD display 💕<br />
+          Secured by PayMongo 🇵🇭<br />
           {tipCount > 0 && `${tipCount} tip${tipCount > 1 ? "s" : ""} sent this session ✨`}
         </p>
       </main>
-
-      {/* success overlay */}
-      {success !== null && (
-        <div className="success-wrap">
-          <div className="success-card">
-            <div className="big">🎉</div>
-            <h2>Salamat!</h2>
-            <p>
-              Your ₱{success} tip was sent!<br />
-              Our screen will light up 💕
-            </p>
-          </div>
-        </div>
-      )}
     </>
   );
 }
